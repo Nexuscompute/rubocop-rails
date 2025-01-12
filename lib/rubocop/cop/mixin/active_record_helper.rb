@@ -39,7 +39,12 @@ module RuboCop
       end
 
       def schema
-        RuboCop::Rails::SchemaLoader.load(target_ruby_version)
+        # For compatibility with RuboCop 1.61.0 or lower.
+        if respond_to?(:parser_engine)
+          RuboCop::Rails::SchemaLoader.load(target_ruby_version, parser_engine)
+        else
+          RuboCop::Rails::SchemaLoader.load(target_ruby_version, :parser_whitequark)
+        end
       end
 
       def table_name(class_node)
@@ -98,8 +103,15 @@ module RuboCop
       end
 
       def in_where?(node)
-        send_node = node.each_ancestor(:send).first
-        send_node && WHERE_METHODS.include?(send_node.method_name)
+        send_node = node.each_ancestor(:send, :csend).first
+        return false unless send_node
+
+        return true if WHERE_METHODS.include?(send_node.method_name)
+
+        receiver = send_node.receiver
+        return false unless receiver&.send_type?
+
+        send_node.method?(:not) && WHERE_METHODS.include?(receiver.method_name)
       end
     end
   end

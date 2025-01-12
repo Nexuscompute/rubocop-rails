@@ -8,6 +8,7 @@ module RuboCop
       # @example
       #   # bad
       #   validates_acceptance_of :foo
+      #   validates_comparison_of :foo
       #   validates_confirmation_of :foo
       #   validates_exclusion_of :foo
       #   validates_format_of :foo
@@ -22,6 +23,7 @@ module RuboCop
       #   # good
       #   validates :foo, acceptance: true
       #   validates :foo, confirmation: true
+      #   validates :foo, comparison: true
       #   validates :foo, exclusion: true
       #   validates :foo, format: true
       #   validates :foo, inclusion: true
@@ -29,7 +31,7 @@ module RuboCop
       #   validates :foo, numericality: true
       #   validates :foo, presence: true
       #   validates :foo, absence: true
-      #   validates :foo, size: true
+      #   validates :foo, length: true
       #   validates :foo, uniqueness: true
       #
       class Validation < Base
@@ -39,6 +41,7 @@ module RuboCop
 
         TYPES = %w[
           acceptance
+          comparison
           confirmation
           exclusion
           format
@@ -51,16 +54,16 @@ module RuboCop
           uniqueness
         ].freeze
 
-        RESTRICT_ON_SEND = TYPES.map { |p| "validates_#{p}_of".to_sym }.freeze
+        RESTRICT_ON_SEND = TYPES.map { |p| :"validates_#{p}_of" }.freeze
         ALLOWLIST = TYPES.map { |p| "validates :column, #{p}: value" }.freeze
 
         def on_send(node)
           return if node.receiver
+          return unless (last_argument = node.last_argument)
 
           range = node.loc.selector
 
           add_offense(range, message: message(node)) do |corrector|
-            last_argument = node.arguments.last
             return if !last_argument.literal? && !last_argument.splat_type? && !frozen_array_argument?(last_argument)
 
             corrector.replace(range, 'validates')
@@ -120,7 +123,9 @@ module RuboCop
         end
 
         def validate_type(node)
-          node.method_name.to_s.split('_')[1]
+          type = node.method_name.to_s.split('_')[1]
+
+          type == 'size' ? 'length' : type
         end
 
         def frozen_array_argument?(argument)

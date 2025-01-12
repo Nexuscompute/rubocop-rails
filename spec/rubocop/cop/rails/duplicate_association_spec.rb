@@ -210,6 +210,61 @@ RSpec.describe RuboCop::Cop::Rails::DuplicateAssociation, :config do
       RUBY
     end
 
+    it 'registers offenses when using duplicate `has_*` associations of same class without other arguments' do
+      expect_offense(<<~RUBY)
+        class Post < ApplicationRecord
+          has_many :foos, class_name: 'Foo'
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Association `class_name: 'Foo'` is defined multiple times. Don't repeat associations.
+          has_many :bars, class_name: 'Foo'
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Association `class_name: 'Foo'` is defined multiple times. Don't repeat associations.
+
+          has_one :baz, class_name: 'Bar'
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Association `class_name: 'Bar'` is defined multiple times. Don't repeat associations.
+          has_one :qux, class_name: 'Bar'
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Association `class_name: 'Bar'` is defined multiple times. Don't repeat associations.
+        end
+      RUBY
+
+      expect_correction(<<~RUBY)
+        class Post < ApplicationRecord
+          has_many :bars, class_name: 'Foo'
+
+          has_one :qux, class_name: 'Bar'
+        end
+      RUBY
+    end
+
+    it 'does not register an offenses when using duplicate `belongs_to` assocs of same class without other args' do
+      expect_no_offenses(<<~RUBY)
+        class Post < ApplicationRecord
+          belongs_to :foos, class_name: 'Foo'
+          belongs_to :bars, class_name: 'Foo'
+        end
+      RUBY
+    end
+
+    it 'does not register an offense when using duplicate associations of same class with other arguments' do
+      expect_no_offenses(<<~RUBY)
+        class Post < ApplicationRecord
+          has_many :foos, if: condition, class_name: 'Foo'
+          has_many :bars, if: some_condition, class_name: 'Foo'
+
+          has_one :baz, -> { condition }, class_name: 'Bar'
+          has_one :qux, -> { some_condition }, class_name: 'Bar'
+
+          belongs_to :group, class_name: 'IndustryGroup', foreign_key: :industry_group_id
+        end
+      RUBY
+    end
+
+    it 'does not register an offense when not using association method' do
+      expect_no_offenses(<<~RUBY)
+        class Post < ApplicationRecord
+          validates_presence_of :name
+        end
+      RUBY
+    end
+
     it 'does not flag non-duplicate associations' do
       expect_no_offenses(<<-RUBY)
         class Post < ApplicationRecord
@@ -223,6 +278,17 @@ RSpec.describe RuboCop::Cop::Rails::DuplicateAssociation, :config do
           has_one :top_comment, -> { order(likes: :desc) }, class_name: 'Comment'
 
           has_and_belongs_to_many :related_posts, class_name: 'Post'
+        end
+      RUBY
+    end
+  end
+
+  describe 'a class that does not descend from Active Record' do
+    it 'does not register an offense' do
+      expect_no_offenses(<<-RUBY)
+        class Post < ActiveModel::Serializer
+          has_many :comments, key: :remarks, if: :formal_mode?
+          has_many :comments, key: :rejoinders, if: :debate_mode?
         end
       RUBY
     end

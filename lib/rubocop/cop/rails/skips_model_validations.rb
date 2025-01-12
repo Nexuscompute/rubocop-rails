@@ -9,6 +9,9 @@ module RuboCop
       #
       # Methods may be ignored from this rule by configuring a `AllowedMethods`.
       #
+      # @safety
+      #   This cop is unsafe if the receiver object is not an Active Record object.
+      #
       # @example
       #   # bad
       #   Article.first.decrement!(:view_count)
@@ -63,7 +66,7 @@ module RuboCop
         PATTERN
 
         def_node_matcher :good_insert?, <<~PATTERN
-          (send _ {:insert :insert!} _ {
+          (call _ {:insert :insert!} _ {
             !(hash ...)
             (hash <(pair (sym !{:returning :unique_by}) _) ...>)
           } ...)
@@ -97,7 +100,8 @@ module RuboCop
         end
 
         def forbidden_methods
-          obsolete_result = cop_config['Blacklist']
+          # TODO: Remove when RuboCop Rails 3 releases.
+          obsolete_result = cop_config['Blacklist'] # rubocop:disable InternalAffairs/UndefinedConfig
           if obsolete_result
             warn '`Blacklist` has been renamed to `ForbiddenMethods`.' unless @displayed_forbidden_warning
             @displayed_forbidden_warning = true
@@ -108,7 +112,8 @@ module RuboCop
         end
 
         def allowed_methods
-          obsolete_result = cop_config['Whitelist']
+          # TODO: Remove when RuboCop Rails 3 releases.
+          obsolete_result = cop_config['Whitelist'] # rubocop:disable InternalAffairs/UndefinedConfig
           if obsolete_result
             warn '`Whitelist` has been renamed to `AllowedMethods`.' unless @displayed_allowed_warning
             @displayed_allowed_warning = true

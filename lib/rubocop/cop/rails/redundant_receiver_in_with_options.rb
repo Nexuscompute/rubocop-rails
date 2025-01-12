@@ -78,7 +78,7 @@ module RuboCop
 
           send_nodes.each do |send_node|
             receiver = send_node.receiver
-            add_offense(receiver.source_range) do |corrector|
+            add_offense(receiver) do |corrector|
               autocorrect(corrector, send_node, node)
             end
           end
@@ -100,7 +100,7 @@ module RuboCop
                  else
                    return false if node.arguments.empty?
 
-                   arg = node.arguments.first
+                   arg = node.first_argument
                    ->(n) { same_value?(arg, n.receiver) }
                  end
 

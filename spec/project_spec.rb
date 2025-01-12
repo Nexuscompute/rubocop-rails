@@ -24,8 +24,8 @@ RSpec.describe 'RuboCop Rails Project', type: :feature do
         start_with_subject = description.match(/\AThis cop (?<verb>.+?) .*/)
         suggestion = start_with_subject[:verb]&.capitalize if start_with_subject
         suggestion ||= 'a verb'
-        expect(start_with_subject).to(
-          be_nil, "`Description` for `#{name}` should be started with `#{suggestion}` instead of `This cop ...`."
+        expect(start_with_subject.nil?).to(
+          be(true), "`Description` for `#{name}` should be started with `#{suggestion}` instead of `This cop ...`."
         )
       end
     end
@@ -103,6 +103,43 @@ RSpec.describe 'RuboCop Rails Project', type: :feature do
       end
     end
 
+    it 'does not include unnecessary `SafeAutoCorrect: false`' do
+      cop_names.each do |cop_name|
+        next unless config.dig(cop_name, 'Safe') == false
+
+        safe_autocorrect = config.dig(cop_name, 'SafeAutoCorrect')
+
+        expect(safe_autocorrect).not_to(be(false), "`#{cop_name}` has unnecessary `SafeAutoCorrect: false` config.")
+      end
+    end
+
+    it 'is expected that all cops documented with `@safety` are `Safe: false` or `SafeAutoCorrect: false`' do
+      require 'yard'
+
+      YARD::Registry.load!
+
+      unsafe_cops = YARD::Registry.all(:class).select do |example|
+        example.tags.any? { |tag| tag.tag_name == 'safety' }
+      end
+
+      unsafe_cop_names = unsafe_cops.map do |cop|
+        department_and_cop_names = cop.path.split('::')[2..] # Drop `RuboCop::Cop` from class name.
+
+        department_and_cop_names.join('/')
+      end
+
+      unsafe_cop_names.each do |cop_name|
+        cop_config = config[cop_name]
+        unsafe = cop_config['Safe'] == false || cop_config['SafeAutoCorrect'] == false
+
+        expect(unsafe).to(
+          be(true),
+          "`#{cop_name}` cop should be set `Safe: false` or `SafeAutoCorrect: false` " \
+          'because `@safety` YARD tag exists.'
+        )
+      end
+    end
+
     it 'sorts cop names alphabetically' do
       previous_key = ''
       config_default = YAML.load_file('config/default.yml')
@@ -136,11 +173,15 @@ RSpec.describe 'RuboCop Rails Project', type: :feature do
         expect(entries).to all(match(/^\* \S/))
       end
 
+      it 'has one space between the period and the parentheses enclosing contributor name' do
+        expect(entries).to all(match(/\. \(\[/))
+      end
+
       describe 'link to related issue' do
         let(:issues) do
-          entries.map do |entry|
+          entries.filter_map do |entry|
             entry.match(/\[(?<number>[#\d]+)\]\((?<url>[^)]+)\)/)
-          end.compact
+          end
         end
 
         it 'has an issue number prefixed with #' do
@@ -210,7 +251,7 @@ RSpec.describe 'RuboCop Rails Project', type: :feature do
       end
 
       let(:existing_cop_names) do
-        RuboCop::Cop::Cop.registry.without_department(:Test).without_department(:Test2).cops.to_set(&:cop_name)
+        RuboCop::Cop::Registry.global.reject { |cop| cop.cop_name.start_with?('Test/') }.to_set(&:cop_name)
       end
 
       let(:legacy_cop_names) do
@@ -218,6 +259,10 @@ RSpec.describe 'RuboCop Rails Project', type: :feature do
       end
 
       dir = File.expand_path('../changelog', __dir__)
+
+      it 'does not have a directory' do
+        expect(Dir["#{dir}/*"].none? { |path| File.directory?(path) }).to be(true)
+      end
 
       Dir["#{dir}/*.md"].each do |path|
         context "For #{path}" do

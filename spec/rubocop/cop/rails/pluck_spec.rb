@@ -16,6 +16,19 @@ RSpec.describe RuboCop::Cop::Rails::Pluck, :config do
         end
       end
 
+      context "when safe navigation `#{method}` with symbol literal key can be replaced with `pluck`" do
+        it 'registers an offense' do
+          expect_offense(<<~RUBY, method: method)
+            x&.%{method} { |a| a[:foo] }
+               ^{method}^^^^^^^^^^^^^^^^ Prefer `pluck(:foo)` over `%{method} { |a| a[:foo] }`.
+          RUBY
+
+          expect_correction(<<~RUBY)
+            x&.pluck(:foo)
+          RUBY
+        end
+      end
+
       context "when `#{method}` with string literal key can be replaced with `pluck`" do
         it 'registers an offense' do
           expect_offense(<<~RUBY, method: method)
@@ -113,6 +126,48 @@ RSpec.describe RuboCop::Cop::Rails::Pluck, :config do
               RUBY
             end
           end
+        end
+      end
+
+      context "when `#{method}` is used in block" do
+        it 'does not register an offense' do
+          expect_no_offenses(<<~RUBY)
+            n.each do |x|
+              x.#{method} { |a| a[:foo] }
+            end
+          RUBY
+        end
+      end
+
+      context "when `#{method}` is used in block with other operations" do
+        it 'does not register an offense' do
+          expect_no_offenses(<<~RUBY)
+            n.each do |x|
+              do_something
+              x.#{method} { |a| a[:foo] }
+            end
+          RUBY
+        end
+      end
+
+      context "when `#{method}` is used in numblock" do
+        it 'does not register an offense' do
+          expect_no_offenses(<<~RUBY)
+            n.each do
+              _1.#{method} { |a| a[:foo] }
+            end
+          RUBY
+        end
+      end
+
+      context "when `#{method}` is used in numblock with other operations" do
+        it 'does not register an offense' do
+          expect_no_offenses(<<~RUBY)
+            n.each do
+              do_something
+              _1.#{method} { |a| a[:foo] }
+            end
+          RUBY
         end
       end
     end

@@ -39,6 +39,9 @@ module RuboCop
         MSG = 'Remove explicit presence validation for %<association>s.'
         RESTRICT_ON_SEND = %i[validates].freeze
 
+        # From https://github.com/rails/rails/blob/7a0bf93b9dd291c7f61121a41b3a813ac8857e6a/activemodel/lib/active_model/validations/validates.rb#L157-L159
+        NON_VALIDATION_OPTIONS = %i[if unless on allow_blank allow_nil strict].freeze
+
         minimum_target_rails_version 5.0
 
         # @!method presence_validation?(node)
@@ -53,6 +56,12 @@ module RuboCop
         #   @example source that matches - by a foreign key
         #     validates :user_id, presence: true
         #
+        #   @example source that DOES NOT match - if condition
+        #     validates :user_id, presence: true, if: condition
+        #
+        #   @example source that DOES NOT match - unless condition
+        #     validates :user_id, presence: true, unless: condition
+        #
         #   @example source that DOES NOT match - strict validation
         #     validates :user_id, presence: true, strict: true
         #
@@ -65,6 +74,7 @@ module RuboCop
             $[
               (hash <$(pair (sym :presence) true) ...>)         # presence: true
               !(hash <$(pair (sym :strict) {true const}) ...>)  # strict: true
+              !(hash <$(pair (sym {:if :unless}) _) ...>)       # if: some_condition or unless: some_condition
             ]
           )
         PATTERN
@@ -163,6 +173,12 @@ module RuboCop
 
         def on_send(node)
           presence_validation?(node) do |all_keys, options, presence|
+            # If presence is the only validation option and other non-validation options
+            # are present, removing it will cause rails to error.
+            used_option_keys = options.keys.select(&:sym_type?).map(&:value)
+            remaining_validations = used_option_keys - NON_VALIDATION_OPTIONS - [:presence]
+            return if remaining_validations.none? && options.keys.length > 1
+
             keys = non_optional_belongs_to(node.parent, all_keys)
             return if keys.none?
 

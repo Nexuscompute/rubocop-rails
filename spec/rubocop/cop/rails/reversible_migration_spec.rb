@@ -1,6 +1,11 @@
 # frozen_string_literal: true
 
 RSpec.describe RuboCop::Cop::Rails::ReversibleMigration, :config do
+  let(:config) do
+    RuboCop::Config.new(
+      'AllCops' => { 'MigratedSchemaVersion' => '20240101010101', 'TargetRailsVersion' => rails_version }
+    )
+  end
   let(:source) do
     <<~RUBY
       class ExampleMigration < ActiveRecord::Migration[7.0]
@@ -115,6 +120,10 @@ RSpec.describe RuboCop::Cop::Rails::ReversibleMigration, :config do
 
     it_behaves_like 'offense', 'drop_table(without block)', <<~RUBY
       drop_table :users
+    RUBY
+
+    it_behaves_like 'accepts', 'drop_table(without arguments)', <<~RUBY
+      drop_table
     RUBY
   end
 
@@ -312,7 +321,7 @@ RSpec.describe RuboCop::Cop::Rails::ReversibleMigration, :config do
 
   context 'when multiple databases' do
     it 'does not register an offense for reversible operation' do
-      expect_no_offenses(<<~RUBY, 'db/animals_migrate/20211007000002_create_animals.rb')
+      expect_no_offenses(<<~RUBY, 'db/animals_migrate/20250101010101_create_animals.rb')
         class CreateAnimals < ActiveRecord::Migration[7.0]
           def change
             create_table :animals
@@ -322,7 +331,7 @@ RSpec.describe RuboCop::Cop::Rails::ReversibleMigration, :config do
     end
 
     it 'registers an offense for irreversible operation' do
-      expect_offense(<<~RUBY, 'db/animals_migrate/20211007000002_remove_animals.rb')
+      expect_offense(<<~RUBY, 'db/animals_migrate/20250101010101_remove_animals.rb')
         class RemoveAnimals < ActiveRecord::Migration[7.0]
           def change
             drop_table :animals
@@ -331,11 +340,21 @@ RSpec.describe RuboCop::Cop::Rails::ReversibleMigration, :config do
         end
       RUBY
     end
+
+    it 'does not register an offense for irreversible operation when migration file was migrated' do
+      expect_no_offenses(<<~RUBY, 'db/animals_migrate/20190101010101_remove_animals.rb')
+        class RemoveAnimals < ActiveRecord::Migration[7.0]
+          def change
+            drop_table :animals
+          end
+        end
+      RUBY
+    end
   end
 
   context 'when irreversible operation is used in `::` prefixed class definition' do
     it 'registers an offense' do
-      expect_offense(<<~RUBY, 'db/migrate/20211007000002_remove_animals.rb')
+      expect_offense(<<~RUBY, 'db/migrate/20250101010101_remove_animals.rb')
         class ::RemoveAnimals < ActiveRecord::Migration[7.0]
           def change
             drop_table :animals

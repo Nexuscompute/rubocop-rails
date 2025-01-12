@@ -12,17 +12,24 @@ end
 
 task update_cops_documentation: :yard_for_generate_documentation do
   deps = ['Rails']
+  # NOTE: Insert minimum_target_rails_version after ruby version
+  required_rails_version = lambda do |data|
+    return '' unless (version = data.cop.gem_requirements[RuboCop::Cop::TargetRailsVersion::TARGET_GEM_NAME])
+
+    "NOTE: Required Rails version: #{version.requirements[0][1]}\n\n"
+  end
+  extra_info = { required_ruby_version: required_rails_version }
 
   # NOTE: Update `<<next>>` version for docs/modules/ROOT/pages/cops_rails.adoc
   # when running release tasks.
   RuboCop::Rails::Inject.defaults!
 
-  CopsDocumentationGenerator.new(departments: deps).call
+  CopsDocumentationGenerator.new(departments: deps, extra_info: extra_info).call
 end
 
 desc 'Syntax check for the documentation comments'
 task documentation_syntax_check: :yard_for_generate_documentation do
-  require 'parser/ruby31'
+  require 'parser/ruby32'
 
   ok = true
   YARD::Registry.load!
@@ -37,7 +44,7 @@ task documentation_syntax_check: :yard_for_generate_documentation do
     examples.to_a.each do |example|
       buffer = Parser::Source::Buffer.new('<code>', 1)
       buffer.source = example.text
-      parser = Parser::Ruby31.new(RuboCop::AST::Builder.new)
+      parser = Parser::Ruby32.new(RuboCop::AST::Builder.new)
       parser.diagnostics.all_errors_are_fatal = true
       parser.parse(buffer)
     rescue Parser::SyntaxError => e

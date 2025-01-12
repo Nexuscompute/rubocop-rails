@@ -12,6 +12,23 @@ RSpec.describe RuboCop::Cop::Rails::WhereNot, :config do
     RUBY
   end
 
+  it 'registers no offense when using `!=` and anonymous placeholder without second argument' do
+    expect_no_offenses(<<~RUBY)
+      User.where('name != ?')
+    RUBY
+  end
+
+  it 'registers an offense and corrects when using `!=` and anonymous placeholder with safe navigation' do
+    expect_offense(<<~RUBY)
+      User&.where('name != ?', 'Gabe')
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^ Use `where&.not(name: 'Gabe')` instead of manually constructing negated SQL in `where`.
+    RUBY
+
+    expect_correction(<<~RUBY)
+      User&.where&.not(name: 'Gabe')
+    RUBY
+  end
+
   it 'registers an offense and corrects when using `!=` and named placeholder' do
     expect_offense(<<~RUBY)
       User.where('name != :name', name: 'Gabe')
@@ -78,6 +95,12 @@ RSpec.describe RuboCop::Cop::Rails::WhereNot, :config do
     RUBY
   end
 
+  it 'registers no offense when using `NOT IN` and named placeholder without second argument' do
+    expect_no_offenses(<<~RUBY)
+      User.where("name NOT IN (:names)")
+    RUBY
+  end
+
   it 'registers an offense and corrects when using `!=` and namespaced columns' do
     expect_offense(<<~RUBY)
       Course.where('enrollments.student_id != ?', student.id)
@@ -100,6 +123,17 @@ RSpec.describe RuboCop::Cop::Rails::WhereNot, :config do
     RUBY
   end
 
+  it 'registers an offense and corrects when using implicit receiver' do
+    expect_offense(<<~RUBY)
+      where('name != ?', 'Gabe')
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^ Use `where.not(name: 'Gabe')` instead of manually constructing negated SQL in `where`.
+    RUBY
+
+    expect_correction(<<~RUBY)
+      where.not(name: 'Gabe')
+    RUBY
+  end
+
   context 'with array arguments' do
     it 'registers an offense and corrects when using `!=` and anonymous placeholder' do
       expect_offense(<<~RUBY)
@@ -109,6 +143,17 @@ RSpec.describe RuboCop::Cop::Rails::WhereNot, :config do
 
       expect_correction(<<~RUBY)
         User.where.not(name: 'Gabe')
+      RUBY
+    end
+
+    it 'registers an offense and corrects when using `!=` and anonymous placeholder with safe navigation' do
+      expect_offense(<<~RUBY)
+        User&.where(['name != ?', 'Gabe'])
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Use `where&.not(name: 'Gabe')` instead of manually constructing negated SQL in `where`.
+      RUBY
+
+      expect_correction(<<~RUBY)
+        User&.where&.not(name: 'Gabe')
       RUBY
     end
 
@@ -228,6 +273,12 @@ RSpec.describe RuboCop::Cop::Rails::WhereNot, :config do
   it 'does not register an offense when template string contains `<>` and additional boolean logic' do
     expect_no_offenses(<<~RUBY)
       User.where('name <> ? AND age <> ?', 'john', 19)
+    RUBY
+  end
+
+  it 'does not register an offense when qualifying the database' do
+    expect_no_offenses(<<~RUBY)
+      User.where('database.users.name != ?', 'Gabe')
     RUBY
   end
 end

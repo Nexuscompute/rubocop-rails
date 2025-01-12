@@ -8,7 +8,7 @@ Gem::Specification.new do |s|
   s.name = 'rubocop-rails'
   s.version = RuboCop::Rails::Version::STRING
   s.platform = Gem::Platform::RUBY
-  s.required_ruby_version = '>= 2.6.0'
+  s.required_ruby_version = '>= 2.7.0'
   s.authors = ['Bozhidar Batsov', 'Jonas Arvidsson', 'Yuji Nakayama']
   s.description = <<~DESCRIPTION
     Automatic Rails code style checking tool.
@@ -31,9 +31,10 @@ Gem::Specification.new do |s|
     'rubygems_mfa_required' => 'true'
   }
 
-  s.add_runtime_dependency 'activesupport', '>= 4.2.0'
+  s.add_dependency 'activesupport', '>= 4.2.0'
   # Rack::Utils::SYMBOL_TO_STATUS_CODE, which is used by HttpStatus cop, was
   # introduced in rack 1.1
-  s.add_runtime_dependency 'rack', '>= 1.1'
-  s.add_runtime_dependency 'rubocop', '>= 1.33.0', '< 2.0'
+  s.add_dependency 'rack', '>= 1.1'
+  s.add_dependency 'rubocop', '>= 1.52.0', '< 2.0'
+  s.add_dependency 'rubocop-ast', '>= 1.31.1', '< 2.0'
 end
