@@ -12,8 +12,9 @@ module RuboCop
       # The `bulk` option is only supported on the MySQL and
       # the PostgreSQL (5.2 later) adapter; thus it will
       # automatically detect an adapter from `development` environment
-      # in `config/database.yml` when the `Database` option is not set.
-      # If the adapter is not `mysql2` or `postgresql`,
+      # in `config/database.yml` or the environment variable `DATABASE_URL`
+      # when the `Database` option is not set.
+      # If the adapter is not `mysql2`, `trilogy`, `postgresql`, or `postgis`,
       # this Cop ignores offenses.
       #
       # @example
@@ -63,15 +64,15 @@ module RuboCop
       #     end
       #   end
       class BulkChangeTable < Base
+        include DatabaseTypeResolvable
+        include MigrationsHelper
+
         MSG_FOR_CHANGE_TABLE = <<~MSG.chomp
           You can combine alter queries using `bulk: true` options.
         MSG
         MSG_FOR_ALTER_METHODS = <<~MSG.chomp
           You can use `change_table :%<table>s, bulk: true` to combine alter queries.
         MSG
-
-        MYSQL = 'mysql'
-        POSTGRESQL = 'postgresql'
 
         MIGRATION_METHODS = %i[change up down].freeze
 
@@ -113,8 +114,10 @@ module RuboCop
         MYSQL_COMBINABLE_ALTER_METHODS = %i[rename_column add_index remove_index].freeze
 
         POSTGRESQL_COMBINABLE_TRANSFORMATIONS = %i[change_default].freeze
+        POSTGRESQL_COMBINABLE_TRANSFORMATIONS_SINCE_6_1 = %i[change_null].freeze
 
         POSTGRESQL_COMBINABLE_ALTER_METHODS = %i[change_column_default].freeze
+        POSTGRESQL_COMBINABLE_ALTER_METHODS_SINCE_6_1 = %i[change_column_null].freeze
 
         def on_def(node)
           return unless support_bulk_alter?
@@ -138,9 +141,9 @@ module RuboCop
           return unless support_bulk_alter?
           return unless node.command?(:change_table)
           return if include_bulk_options?(node)
-          return unless node.block_node
+          return unless (body = node.block_node&.body)
 
-          send_nodes = send_nodes_from_change_table_block(node.block_node.body)
+          send_nodes = send_nodes_from_change_table_block(body)
 
           add_offense_for_change_table(node) if count_transformations(send_nodes) > 1
         end
@@ -174,39 +177,6 @@ module RuboCop
           options.hash_type? && options.keys.any? { |key| key.sym_type? && key.value == :bulk }
         end
 
-        def database
-          cop_config['Database'] || database_from_yaml
-        end
-
-        def database_from_yaml
-          return nil unless database_yaml
-
-          case database_yaml['adapter']
-          when 'mysql2'
-            MYSQL
-          when 'postgresql'
-            POSTGRESQL
-          end
-        end
-
-        def database_yaml
-          return nil unless File.exist?('config/database.yml')
-
-          yaml = if YAML.respond_to?(:unsafe_load_file)
-                   YAML.unsafe_load_file('config/database.yml')
-                 else
-                   YAML.load_file('config/database.yml')
-                 end
-          return nil unless yaml.is_a? Hash
-
-          config = yaml['development']
-          return nil unless config.is_a?(Hash)
-
-          config
-        rescue Psych::SyntaxError
-          nil
-        end
-
         def support_bulk_alter?
           case database
           when MYSQL
@@ -229,7 +199,9 @@ module RuboCop
           when MYSQL
             COMBINABLE_ALTER_METHODS + MYSQL_COMBINABLE_ALTER_METHODS
           when POSTGRESQL
-            COMBINABLE_ALTER_METHODS + POSTGRESQL_COMBINABLE_ALTER_METHODS
+            result = COMBINABLE_ALTER_METHODS + POSTGRESQL_COMBINABLE_ALTER_METHODS
+            result += POSTGRESQL_COMBINABLE_ALTER_METHODS_SINCE_6_1 if target_rails_version >= 6.1
+            result
           end
         end
 
@@ -238,14 +210,16 @@ module RuboCop
           when MYSQL
             COMBINABLE_TRANSFORMATIONS + MYSQL_COMBINABLE_TRANSFORMATIONS
           when POSTGRESQL
-            COMBINABLE_TRANSFORMATIONS + POSTGRESQL_COMBINABLE_TRANSFORMATIONS
+            result = COMBINABLE_TRANSFORMATIONS + POSTGRESQL_COMBINABLE_TRANSFORMATIONS
+            result += POSTGRESQL_COMBINABLE_TRANSFORMATIONS_SINCE_6_1 if target_rails_version >= 6.1
+            result
           end
         end
 
         # @param node [RuboCop::AST::SendNode]
         def add_offense_for_alter_methods(node)
           # arguments: [{(sym :table)(str "table")} ...]
-          table_node = node.arguments[0]
+          table_node = node.first_argument
           return unless table_node.is_a? RuboCop::AST::BasicLiteralNode
 
           message = format(MSG_FOR_ALTER_METHODS, table: table_node.value)
@@ -267,10 +241,10 @@ module RuboCop
           # @param new_node [RuboCop::AST::SendNode]
           def process(new_node)
             # arguments: [{(sym :table)(str "table")} ...]
-            table_node = new_node.arguments[0]
+            table_node = new_node.first_argument
             if table_node.is_a? RuboCop::AST::BasicLiteralNode
               flush unless @nodes.all? do |node|
-                node.arguments[0].value.to_s == table_node.value.to_s
+                node.first_argument.value.to_s == table_node.value.to_s
               end
               @nodes << new_node
             else

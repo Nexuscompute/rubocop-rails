@@ -18,8 +18,9 @@ module RuboCop
       #   t.boolean :active, default: true, null: false
       #
       class ThreeStateBooleanColumn < Base
-        MSG = 'Boolean columns should always have a default value and a `NOT NULL` constraint.'
+        include MigrationsHelper
 
+        MSG = 'Boolean columns should always have a default value and a `NOT NULL` constraint.'
         RESTRICT_ON_SEND = %i[add_column column boolean].freeze
 
         def_node_matcher :three_state_boolean?, <<~PATTERN
@@ -35,7 +36,7 @@ module RuboCop
         PATTERN
 
         def_node_search :change_column_null?, <<~PATTERN
-          (send nil? :change_column_null {(sym %1) (str %1)} {(sym %2) (str %2)} false)
+          (send nil? :change_column_null %1 %2 false)
         PATTERN
 
         def on_send(node)
@@ -46,7 +47,7 @@ module RuboCop
 
             def_node = node.each_ancestor(:def, :defs).first
             table_node = table_node(node)
-            return if def_node && change_column_null?(def_node, table_node.value, column_node.value)
+            return if def_node && (table_node.nil? || change_column_null?(def_node, table_node, column_node))
 
             add_offense(node)
           end

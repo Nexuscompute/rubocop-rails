@@ -15,6 +15,28 @@ RSpec.describe RuboCop::Cop::Rails::WhereExists, :config do
       RUBY
     end
 
+    it 'registers an offense and corrects when using `where(...)&.exists?` with hash argument' do
+      expect_offense(<<~RUBY)
+        User.where(name: 'john')&.exists?
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Prefer `exists?(name: 'john')` over `where(name: 'john')&.exists?`.
+      RUBY
+
+      expect_correction(<<~RUBY)
+        User.exists?(name: 'john')
+      RUBY
+    end
+
+    it 'registers an offense and corrects when using `where(...)&.exists?` with hash argument with safe navigation' do
+      expect_offense(<<~RUBY)
+        User&.where(name: 'john')&.exists?
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Prefer `exists?(name: 'john')` over `where(name: 'john')&.exists?`.
+      RUBY
+
+      expect_correction(<<~RUBY)
+        User&.exists?(name: 'john')
+      RUBY
+    end
+
     it 'registers an offense and corrects when using `where(...).exists?` with array argument' do
       expect_offense(<<~RUBY)
         User.where(['name = ?', 'john']).exists?
@@ -34,6 +56,17 @@ RSpec.describe RuboCop::Cop::Rails::WhereExists, :config do
 
       expect_correction(<<~RUBY)
         User.exists?(['name = ?', 'john'])
+      RUBY
+    end
+
+    it 'registers an offense when using implicit receiver and arg' do
+      expect_offense(<<~RUBY)
+        where('name = ?', 'john').exists?
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Prefer `exists?(['name = ?', 'john'])` over `where('name = ?', 'john').exists?`.
+      RUBY
+
+      expect_correction(<<~RUBY)
+        exists?(['name = ?', 'john'])
       RUBY
     end
 
@@ -87,6 +120,17 @@ RSpec.describe RuboCop::Cop::Rails::WhereExists, :config do
       RUBY
     end
 
+    it 'registers an offense and corrects when using `exists?` with a hash with safe navigation' do
+      expect_offense(<<~RUBY)
+        User&.exists?(name: 'john')
+              ^^^^^^^^^^^^^^^^^^^^^ Prefer `where(name: 'john')&.exists?` over `exists?(name: 'john')`.
+      RUBY
+
+      expect_correction(<<~RUBY)
+        User&.where(name: 'john')&.exists?
+      RUBY
+    end
+
     it 'registers an offense and corrects when using `exists?` with an array' do
       expect_offense(<<~RUBY)
         User.exists?(['name = ?', 'john'])
@@ -106,6 +150,17 @@ RSpec.describe RuboCop::Cop::Rails::WhereExists, :config do
 
       expect_correction(<<~RUBY)
         User.where('name = ?', 'john').exists?
+      RUBY
+    end
+
+    it 'registers an offense when using implicit receiver and arg' do
+      expect_offense(<<~RUBY)
+        exists?('name = ?', 'john')
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^ Prefer `where('name = ?', 'john').exists?` over `exists?('name = ?', 'john')`.
+      RUBY
+
+      expect_correction(<<~RUBY)
+        where('name = ?', 'john').exists?
       RUBY
     end
 

@@ -2,19 +2,17 @@
 
 RSpec.describe RuboCop::Cop::Rails::RootPathnameMethods, :config do
   {
-    Dir: described_class::DIR_METHODS,
+    Dir: described_class::DIR_NON_GLOB_METHODS,
     File: described_class::FILE_METHODS,
     FileTest: described_class::FILE_TEST_METHODS,
     FileUtils: described_class::FILE_UTILS_METHODS,
     IO: described_class::FILE_METHODS
   }.each do |receiver, methods|
     methods.each do |method|
-      next if method == :glob
-
       it "registers an offense when using `#{receiver}.#{method}(Rails.public_path)` (if arity exists)" do
         expect_offense(<<~RUBY, receiver: receiver, method: method)
           %{receiver}.%{method}(Rails.public_path)
-          ^{receiver}^^{method}^^^^^^^^^^^^^^^^^^^ `Rails.public_path` is a `Pathname` so you can just append `#%{method}`.
+          ^{receiver}^^{method}^^^^^^^^^^^^^^^^^^^ `Rails.public_path` is a `Pathname`, so you can use `Rails.public_path.%{method}`.
         RUBY
 
         expect_correction(<<~RUBY)
@@ -25,7 +23,7 @@ RSpec.describe RuboCop::Cop::Rails::RootPathnameMethods, :config do
       it "registers an offense when using `::#{receiver}.#{method}(::Rails.root.join(...))` (if arity exists)" do
         expect_offense(<<~RUBY, receiver: receiver, method: method)
           ::%{receiver}.%{method}(::Rails.root.join('db', 'schema.rb'))
-          ^^^{receiver}^^{method}^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `::Rails.root` is a `Pathname` so you can just append `#%{method}`.
+          ^^^{receiver}^^{method}^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `::Rails.root` is a `Pathname`, so you can use `::Rails.root.join('db', 'schema.rb').%{method}`.
         RUBY
 
         expect_correction(<<~RUBY)
@@ -36,7 +34,7 @@ RSpec.describe RuboCop::Cop::Rails::RootPathnameMethods, :config do
       it "registers an offense when using `::#{receiver}.#{method}(::Rails.root.join(...), ...)` (if arity exists)" do
         expect_offense(<<~RUBY, receiver: receiver, method: method)
           ::%{receiver}.%{method}(::Rails.root.join('db', 'schema.rb'), 20, 5)
-          ^^^{receiver}^^{method}^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `::Rails.root` is a `Pathname` so you can just append `#%{method}`.
+          ^^^{receiver}^^{method}^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `::Rails.root` is a `Pathname`, so you can use `::Rails.root.join('db', 'schema.rb').%{method}(20, 5)`.
         RUBY
 
         expect_correction(<<~RUBY)
@@ -46,11 +44,19 @@ RSpec.describe RuboCop::Cop::Rails::RootPathnameMethods, :config do
     end
   end
 
-  context 'when using `Dir.glob`' do
+  context 'when using `Dir.glob` on Ruby 2.4 or lower', :ruby24, unsupported_on: :prism do
+    it 'does not registers an offense' do
+      expect_no_offenses(<<~RUBY)
+        Dir.glob(Rails.root.join('**/*.rb'))
+      RUBY
+    end
+  end
+
+  context 'when using `Dir.glob` on Ruby 2.5 or higher', :ruby25 do
     it "registers an offense when using `Dir.glob(Rails.root.join('**/*.rb'))`" do
       expect_offense(<<~RUBY)
         Dir.glob(Rails.root.join('**/*.rb'))
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname` so you can just append `#glob`.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname`, so you can use `Rails.root.glob('**/*.rb')`.
       RUBY
 
       expect_correction(<<~RUBY)
@@ -61,7 +67,7 @@ RSpec.describe RuboCop::Cop::Rails::RootPathnameMethods, :config do
     it "registers an offense when using `::Dir.glob(Rails.root.join('**/*.rb'))`" do
       expect_offense(<<~RUBY)
         ::Dir.glob(Rails.root.join('**/*.rb'))
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname` so you can just append `#glob`.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname`, so you can use `Rails.root.glob('**/*.rb')`.
       RUBY
 
       expect_correction(<<~RUBY)
@@ -72,7 +78,7 @@ RSpec.describe RuboCop::Cop::Rails::RootPathnameMethods, :config do
     it "registers an offense when using `Dir.glob(Rails.root.join('**/\#{path}/*.rb'))`" do
       expect_offense(<<~'RUBY')
         Dir.glob(Rails.root.join("**/#{path}/*.rb"))
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname` so you can just append `#glob`.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname`, so you can use `Rails.root.glob("**/#{path}/*.rb")`.
       RUBY
 
       expect_correction(<<~'RUBY')
@@ -83,7 +89,7 @@ RSpec.describe RuboCop::Cop::Rails::RootPathnameMethods, :config do
     it "registers an offense when using `Dir.glob(Rails.root.join('**', '*.rb'))`" do
       expect_offense(<<~RUBY)
         Dir.glob(Rails.root.join('**', '*.rb'))
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname` so you can just append `#glob`.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname`, so you can use `Rails.root.glob('**/*.rb')`.
       RUBY
 
       expect_correction(<<~RUBY)
@@ -99,7 +105,7 @@ RSpec.describe RuboCop::Cop::Rails::RootPathnameMethods, :config do
       it "registers an offense when using `Dir.glob(Rails.root.join('**', '*.rb'))`" do
         expect_offense(<<~RUBY)
           Dir.glob(Rails.root.join('**', '*.rb'))
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname` so you can just append `#glob`.
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname`, so you can use `Rails.root.glob("**/*.rb")`.
         RUBY
 
         expect_correction(<<~RUBY)
@@ -111,7 +117,7 @@ RSpec.describe RuboCop::Cop::Rails::RootPathnameMethods, :config do
     it "registers an offense when using `Dir.glob(Rails.root.join('**', \"\#{path}\", '*.rb'))`" do
       expect_offense(<<~'RUBY')
         Dir.glob(Rails.root.join('**', "#{path}", '*.rb'))
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname` so you can just append `#glob`.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname`, so you can use `Rails.root.glob("**/#{path}/*.rb")`.
       RUBY
 
       expect_correction(<<~'RUBY')
@@ -122,7 +128,7 @@ RSpec.describe RuboCop::Cop::Rails::RootPathnameMethods, :config do
     it 'registers an offense when using `Rails.env` argument within `Dir.glob`' do
       expect_offense(<<~RUBY)
         Dir.glob(Rails.root.join("db", "seeds", Rails.env, "*.rb")).sort.each do |file|
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname` so you can just append `#glob`.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname`, so you can use `Rails.root.glob("db/seeds/\#{Rails.env}/*.rb")`.
           load file
         end
       RUBY
@@ -131,6 +137,19 @@ RSpec.describe RuboCop::Cop::Rails::RootPathnameMethods, :config do
         Rails.root.glob("db/seeds/#{Rails.env}/*.rb").sort.each do |file|
           load file
         end
+      RUBY
+    end
+  end
+
+  context 'when using Dir.[] on Ruby 2.5 or higher', :ruby25 do
+    it 'registers offense when using `Dir[Rails.root.join(...)]`' do
+      expect_offense(<<~RUBY)
+        Dir[Rails.root.join('spec/support/**/*.rb')]
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname`, so you can use `Rails.root.glob('spec/support/**/*.rb')`.
+      RUBY
+
+      expect_correction(<<~RUBY)
+        Rails.root.glob('spec/support/**/*.rb')
       RUBY
     end
   end
@@ -173,7 +192,7 @@ RSpec.describe RuboCop::Cop::Rails::RootPathnameMethods, :config do
   it 'registers an offense when using `File.open(Rails.root.join(...), ...)` inside an iterator' do
     expect_offense(<<~RUBY)
       files.map { |file| File.open(Rails.root.join('db', file), 'wb') }
-                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname` so you can just append `#open`.
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname`, so you can use `Rails.root.join('db', file).open('wb')`.
     RUBY
 
     expect_correction(<<~RUBY)
@@ -184,11 +203,77 @@ RSpec.describe RuboCop::Cop::Rails::RootPathnameMethods, :config do
   it 'registers an offense when using `File.open Rails.root.join ...` without parens' do
     expect_offense(<<~RUBY)
       file = File.open Rails.root.join 'docs', 'invoice.pdf'
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname` so you can just append `#open`.
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname`, so you can use `Rails.root.join('docs', 'invoice.pdf').open`.
     RUBY
 
     expect_correction(<<~RUBY)
       file = Rails.root.join('docs', 'invoice.pdf').open
+    RUBY
+  end
+
+  it 'registers an offense when using only [] syntax' do
+    expect_offense(<<~RUBY)
+      File.join(Rails.root, ['app', 'models'])
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname`, so you can use `Rails.root.join(*['app', 'models'])`.
+    RUBY
+
+    expect_correction(<<~RUBY)
+      Rails.root.join(*['app', 'models'])
+    RUBY
+  end
+
+  it 'registers an offense when using a leading string and an array using [] syntax' do
+    expect_offense(<<~RUBY)
+      File.join(Rails.root, "app", ["models", "goober"])
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname`, so you can use `Rails.root.join("app", *["models", "goober"])`.
+    RUBY
+
+    expect_correction(<<~RUBY)
+      Rails.root.join("app", *["models", "goober"])
+    RUBY
+  end
+
+  it 'registers an offense when using an array using [] syntax and a trailing string' do
+    expect_offense(<<~RUBY)
+      File.join(Rails.root, ["app", "models"], "goober")
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname`, so you can use `Rails.root.join(*["app", "models"], "goober")`.
+    RUBY
+
+    expect_correction(<<~RUBY)
+      Rails.root.join(*["app", "models"], "goober")
+    RUBY
+  end
+
+  it 'registers an offense when using only %w[] syntax' do
+    expect_offense(<<~RUBY)
+      File.join(Rails.root, %w[app models])
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname`, so you can use `Rails.root.join(*%w[app models])`.
+    RUBY
+
+    expect_correction(<<~RUBY)
+      Rails.root.join(*%w[app models])
+    RUBY
+  end
+
+  it 'registers an offense when using a leading string and an array using %w[] syntax' do
+    expect_offense(<<~RUBY)
+      File.join(Rails.root, "app", %w[models goober])
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname`, so you can use `Rails.root.join("app", *%w[models goober])`.
+    RUBY
+
+    expect_correction(<<~RUBY)
+      Rails.root.join("app", *%w[models goober])
+    RUBY
+  end
+
+  it 'registers an offense when using an array using %w[] syntax and a trailing string' do
+    expect_offense(<<~RUBY)
+      File.join(Rails.root, %w[app models], "goober")
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Rails.root` is a `Pathname`, so you can use `Rails.root.join(*%w[app models], "goober")`.
+    RUBY
+
+    expect_correction(<<~RUBY)
+      Rails.root.join(*%w[app models], "goober")
     RUBY
   end
 end

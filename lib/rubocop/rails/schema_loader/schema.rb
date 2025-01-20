@@ -30,6 +30,7 @@ module RuboCop
 
         def build!(ast)
           raise "Unexpected type: #{ast.type}" unless ast.block_type?
+          return unless ast.body
 
           each_table(ast) do |table_def|
             next unless table_def.method?(:create_table)
@@ -83,21 +84,21 @@ module RuboCop
         private
 
         def build_columns(node)
-          each_content(node).map do |child|
+          each_content(node).filter_map do |child|
             next unless child&.send_type?
             next if child.method?(:index)
 
             Column.new(child)
-          end.compact
+          end
         end
 
         def build_indices(node)
-          each_content(node).map do |child|
+          each_content(node).filter_map do |child|
             next unless child&.send_type?
             next unless child.method?(:index)
 
             Index.new(child)
-          end.compact
+          end
         end
 
         def each_content(node, &block)
@@ -127,7 +128,7 @@ module RuboCop
         private
 
         def analyze_keywords!(node)
-          pairs = node.arguments.last
+          pairs = node.last_argument
           return unless pairs.hash_type?
 
           pairs.each_pair do |k, v|
@@ -158,7 +159,7 @@ module RuboCop
         end
 
         def analyze_keywords!(node)
-          pairs = node.arguments.last
+          pairs = node.last_argument
           return unless pairs.hash_type?
 
           pairs.each_pair do |k, v|
@@ -177,7 +178,7 @@ module RuboCop
         attr_reader :table_name
 
         def initialize(node)
-          super(node)
+          super
 
           @table_name = node.first_argument.value
           @columns, @expression = build_columns_or_expr(node.arguments[1])

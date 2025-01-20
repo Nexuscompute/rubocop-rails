@@ -32,8 +32,8 @@ module RuboCop
 
         def_node_matcher :where_method_call?, <<~PATTERN
           {
-            (send _ :where (array $str_type? $_ ?))
-            (send _ :where $str_type? $_ ?)
+            (call _ :where (array $str_type? $_ ?))
+            (call _ :where $str_type? $_ ?)
           }
         PATTERN
 
@@ -43,10 +43,10 @@ module RuboCop
 
             range = offense_range(node)
 
-            column_and_value = extract_column_and_value(template_node, value_node)
-            return unless column_and_value
+            column, value = extract_column_and_value(template_node, value_node)
+            return unless value
 
-            good_method = build_good_method(*column_and_value)
+            good_method = build_good_method(node.loc.dot&.source, column, value)
             message = format(MSG, good_method: good_method)
 
             add_offense(range, message: message) do |corrector|
@@ -54,6 +54,7 @@ module RuboCop
             end
           end
         end
+        alias on_csend on_send
 
         NOT_EQ_ANONYMOUS_RE = /\A([\w.]+)\s+(?:!=|<>)\s+\?\z/.freeze           # column != ?, column <> ?
         NOT_IN_ANONYMOUS_RE = /\A([\w.]+)\s+NOT\s+IN\s+\(\?\)\z/i.freeze       # column NOT IN (?)
@@ -67,13 +68,14 @@ module RuboCop
           range_between(node.loc.selector.begin_pos, node.source_range.end_pos)
         end
 
+        # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength
         def extract_column_and_value(template_node, value_node)
           value =
             case template_node.value
             when NOT_EQ_ANONYMOUS_RE, NOT_IN_ANONYMOUS_RE
-              value_node.source
+              value_node&.source
             when NOT_EQ_NAMED_RE, NOT_IN_NAMED_RE
-              return unless value_node.hash_type?
+              return unless value_node&.hash_type?
 
               pair = value_node.pairs.find { |p| p.key.value.to_sym == Regexp.last_match(2).to_sym }
               pair.value.source
@@ -83,16 +85,21 @@ module RuboCop
               return
             end
 
-          [Regexp.last_match(1), value]
-        end
+          column_qualifier = Regexp.last_match(1)
+          return if column_qualifier.count('.') > 1
 
-        def build_good_method(column, value)
+          [column_qualifier, value]
+        end
+        # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength
+
+        def build_good_method(dot, column, value)
+          dot ||= '.'
           if column.include?('.')
             table, column = column.split('.')
 
-            "where.not(#{table}: { #{column}: #{value} })"
+            "where#{dot}not(#{table}: { #{column}: #{value} })"
           else
-            "where.not(#{column}: #{value})"
+            "where#{dot}not(#{column}: #{value})"
           end
         end
       end

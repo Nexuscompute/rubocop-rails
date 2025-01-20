@@ -17,7 +17,7 @@ module RuboCop
       #   # good
       #   def change
       #     change_table :users do |t|
-      #       t.remove :name, :string
+      #       t.remove :name, type: :string
       #     end
       #   end
       #
@@ -215,8 +215,10 @@ module RuboCop
         end
 
         def check_drop_table_node(node)
+          return unless (last_argument = node.last_argument)
+
           drop_table_call(node) do
-            unless node.parent.block_type? || node.last_argument.block_pass_type?
+            unless node.parent.block_type? || last_argument.block_pass_type?
               add_offense(node, message: format(MSG, action: 'drop_table(without block)'))
             end
           end
@@ -290,10 +292,10 @@ module RuboCop
           when :change
             false
           when :remove
-            target_rails_version >= 6.1 && all_hash_key?(node.arguments.last, :type)
+            target_rails_version >= 6.1 && all_hash_key?(node.last_argument, :type)
           when :change_default, :change_column_default, :change_table_comment,
                :change_column_comment
-            all_hash_key?(node.arguments.last, :from, :to)
+            all_hash_key?(node.last_argument, :from, :to)
           else
             true
           end
@@ -307,7 +309,7 @@ module RuboCop
 
         def within_reversible_or_up_only_block?(node)
           node.each_ancestor(:block).any? do |ancestor|
-            (ancestor.block_type? && ancestor.send_node.method?(:reversible)) || ancestor.send_node.method?(:up_only)
+            (ancestor.block_type? && ancestor.method?(:reversible)) || ancestor.method?(:up_only)
           end
         end
 

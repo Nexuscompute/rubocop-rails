@@ -47,12 +47,12 @@ RSpec.describe RuboCop::Cop::Rails::SaveBang, :config do
         RUBY
       else
         expect_offense(<<~RUBY, method: method)
-          object.#{method}(variable)
+          object.#{method}(*variable)
                  ^{method} Use `#{method}!` instead of `#{method}` if the return value is not checked.
         RUBY
 
         expect_correction(<<~RUBY)
-          object.#{method}!(variable)
+          object.#{method}!(*variable)
         RUBY
       end
     end
@@ -64,12 +64,12 @@ RSpec.describe RuboCop::Cop::Rails::SaveBang, :config do
         RUBY
       else
         expect_offense(<<~RUBY, method: method)
-          object.#{method}(variable)
+          object.#{method}(**variable)
                  ^{method} Use `#{method}!` instead of `#{method}` if the return value is not checked.
         RUBY
 
         expect_correction(<<~RUBY)
-          object.#{method}!(variable)
+          object.#{method}!(**variable)
         RUBY
       end
     end
@@ -166,6 +166,19 @@ RSpec.describe RuboCop::Cop::Rails::SaveBang, :config do
                                             ^{method} `#{method}` returns a model which is always truthy.
             something
           end
+        RUBY
+      end
+    end
+
+    it "when using #{method} wrapped within parenthesis with if" do
+      if update
+        expect_no_offenses(<<~RUBY)
+          if (object.#{method}); something; end
+        RUBY
+      else
+        expect_offense(<<~RUBY, method: method)
+          if (object.#{method}); something; end
+                     ^{method} `#{method}` returns a model which is always truthy.
         RUBY
       end
     end
@@ -275,7 +288,7 @@ RSpec.describe RuboCop::Cop::Rails::SaveBang, :config do
     end
 
     it "when using #{method} with a bunch of hashes & arrays" do
-      expect_no_offenses(<<~RUBY, method: method)
+      expect_no_offenses(<<~RUBY)
         return [{ success: object.#{method} }, true]
       RUBY
     end
@@ -620,6 +633,88 @@ RSpec.describe RuboCop::Cop::Rails::SaveBang, :config do
     it "when using persisted? directly on #{method} return value" do
       expect_no_offenses(<<~RUBY)
         return unless object.#{method}.persisted?
+      RUBY
+    end
+
+    it "when using persisted? on the result of #{method} in if assignment" do
+      expect_no_offenses(<<~RUBY)
+        if (user = User.#{method}).persisted?
+          foo(user)
+        else
+          bar(user)
+        end
+      RUBY
+    end
+
+    it "when not using persisted? on the result of #{method} in if assignment" do
+      expect_offense(<<~RUBY, method: method)
+        if (user = User.#{method})
+                        ^{method} Use `#{method}!` instead of `#{method}` if the return value is not checked. Or check `persisted?` on model returned from `#{method}`.
+          foo(user)
+        else
+          bar(user)
+        end
+      RUBY
+    end
+
+    it "when using persisted? on the result of #{method} in elsif assignment" do
+      expect_no_offenses(<<~RUBY)
+        if something
+        elsif (user = User.#{method}).persisted?
+          foo(user)
+        else
+          bar(user)
+        end
+      RUBY
+    end
+
+    it "does not register an offense when using persisted? after #{method} to a local variable" do
+      expect_no_offenses(<<~RUBY)
+        user = User.#{method}
+
+        if user.persisted?
+          foo
+        end
+      RUBY
+    end
+
+    it "does not register an offense when using persisted? after #{method} to an instance variable" do
+      expect_no_offenses(<<~RUBY)
+        @user = User.#{method}
+
+        if @user.persisted?
+          foo
+        end
+      RUBY
+    end
+
+    it "does not register an offense when using persisted? after #{method} to a global variable" do
+      expect_no_offenses(<<~RUBY)
+        $user = User.#{method}
+
+        if $user.persisted?
+          foo
+        end
+      RUBY
+    end
+
+    it "does not register an offense when using persisted? after #{method} for multiple assignments" do
+      expect_no_offenses(<<~RUBY)
+        a, b = User.#{method}, User.new
+
+        if a.persisted?
+          foo
+        end
+      RUBY
+    end
+
+    it "does not register an offense when using persisted? after #{method} for conditional assignments" do
+      expect_no_offenses(<<~RUBY)
+        user ||= User.#{method}
+
+        if user.persisted?
+          foo
+        end
       RUBY
     end
 

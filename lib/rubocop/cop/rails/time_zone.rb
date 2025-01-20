@@ -21,12 +21,15 @@ module RuboCop
       #   # bad
       #   Time.now
       #   Time.parse('2015-03-02T19:05:37')
+      #   '2015-03-02T19:05:37'.to_time
       #
       #   # good
       #   Time.current
       #   Time.zone.now
       #   Time.zone.parse('2015-03-02T19:05:37')
       #   Time.zone.parse('2015-03-02T19:05:37Z') # Respect ISO 8601 format with timezone specifier.
+      #   Time.parse('2015-03-02T19:05:37Z') # Also respects ISO 8601
+      #   '2015-03-02T19:05:37Z'.to_time # Also respects ISO 8601
       #
       # @example EnforcedStyle: flexible (default)
       #   # `flexible` allows usage of `in_time_zone` instead of `zone`.
@@ -44,18 +47,16 @@ module RuboCop
         extend AutoCorrector
 
         MSG = 'Do not use `%<current>s` without zone. Use `%<prefer>s` instead.'
-
         MSG_ACCEPTABLE = 'Do not use `%<current>s` without zone. Use one of %<prefer>s instead.'
-
         MSG_LOCALTIME = 'Do not use `Time.localtime` without offset or zone.'
+        MSG_STRING_TO_TIME = 'Do not use `String#to_time` without zone. Use `Time.zone.parse` instead.'
 
         GOOD_METHODS = %i[zone zone_default find_zone find_zone!].freeze
-
         DANGEROUS_METHODS = %i[now local new parse at].freeze
-
         ACCEPTED_METHODS = %i[in_time_zone utc getlocal xmlschema iso8601 jisx0301 rfc3339 httpdate to_i to_f].freeze
+        TIMEZONE_SPECIFIER = /([A-Za-z]|[+-]\d{2}:?\d{2})\z/.freeze
 
-        TIMEZONE_SPECIFIER = /([A-z]|[+-]\d{2}:?\d{2})\z/.freeze
+        RESTRICT_ON_SEND = %i[to_time].freeze
 
         def on_const(node)
           mod, klass = *node
@@ -65,6 +66,16 @@ module RuboCop
 
           check_time_node(klass, node.parent) if klass == :Time
         end
+
+        def on_send(node)
+          return if !node.receiver&.str_type? || !node.method?(:to_time)
+          return if attach_timezone_specifier?(node.receiver)
+
+          add_offense(node.loc.selector, message: MSG_STRING_TO_TIME) do |corrector|
+            corrector.replace(node, "Time.zone.parse(#{node.receiver.source})") unless node.csend_type?
+          end
+        end
+        alias on_csend on_send
 
         private
 
@@ -86,11 +97,9 @@ module RuboCop
         end
 
         def autocorrect_time_new(node, corrector)
-          if node.arguments?
-            corrector.replace(node.loc.selector, 'local')
-          else
-            corrector.replace(node.loc.selector, 'now')
-          end
+          replacement = replacement(node)
+
+          corrector.replace(node.loc.selector, replacement)
         end
 
         # remove redundant `.in_time_zone` from `Time.zone.now.in_time_zone`
@@ -172,7 +181,7 @@ module RuboCop
 
         def safe_method(method_name, node)
           if %w[new current].include?(method_name)
-            node.arguments? ? 'local' : 'now'
+            replacement(node)
           else
             method_name
           end
@@ -247,6 +256,12 @@ module RuboCop
             options.each_pair.any? do |pair|
               pair.key.sym_type? && pair.key.value == :in && !pair.value.nil_type?
             end
+        end
+
+        def replacement(node)
+          return 'now' unless node.arguments?
+
+          node.first_argument.str_type? ? 'parse' : 'local'
         end
       end
     end

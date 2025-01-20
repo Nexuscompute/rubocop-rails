@@ -10,6 +10,9 @@ module RuboCop
       # Rails/HttpPositionalArguments cop or set your TargetRailsVersion in your
       # .rubocop.yml file to 4.2.
       #
+      # NOTE: It does not detect any cases where `include Rack::Test::Methods` is used
+      # which makes the http methods incompatible behavior.
+      #
       # @example
       #   # bad
       #   get :new, { user_id: 1}
@@ -37,8 +40,19 @@ module RuboCop
           (hash (kwsplat _))
         PATTERN
 
+        def_node_matcher :forwarded_kwrestarg?, <<~PATTERN
+          (hash (forwarded-kwrestarg))
+        PATTERN
+
+        def_node_matcher :include_rack_test_methods?, <<~PATTERN
+          (send nil? :include
+            (const
+              (const
+                (const {nil? cbase} :Rack) :Test) :Methods))
+        PATTERN
+
         def on_send(node)
-          return if in_routing_block?(node)
+          return if in_routing_block?(node) || use_rack_test_methods?
 
           http_request?(node) do |data|
             return unless needs_conversion?(data)
@@ -67,7 +81,15 @@ module RuboCop
           !!node.each_ancestor(:block).detect { |block| ROUTING_METHODS.include?(block.method_name) }
         end
 
+        def use_rack_test_methods?
+          processed_source.ast.each_descendant(:send).any? do |node|
+            include_rack_test_methods?(node)
+          end
+        end
+
+        # rubocop:disable Metrics/CyclomaticComplexity
         def needs_conversion?(data)
+          return false if data.forwarded_args_type? || forwarded_kwrestarg?(data)
           return true unless data.hash_type?
           return false if kwsplat_hash?(data)
 
@@ -75,6 +97,7 @@ module RuboCop
             special_keyword_arg?(pair.key) || (format_arg?(pair.key) && data.pairs.one?)
           end
         end
+        # rubocop:enable Metrics/CyclomaticComplexity
 
         def special_keyword_arg?(node)
           node.sym_type? && KEYWORD_ARGS.include?(node.value)

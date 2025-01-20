@@ -36,7 +36,7 @@ module RuboCop
         PATTERN
 
         def on_send(node)
-          return unless node.first_argument.sym_type?
+          return unless node.first_argument&.sym_type?
 
           root_receiver = root_receiver(node)
           where_node_and_argument(root_receiver) do |where_node, where_argument|
@@ -89,16 +89,20 @@ module RuboCop
           end
         end
 
+        # rubocop:disable Metrics/AbcSize
         def remove_where_method(corrector, node, where_node)
           range = range_between(where_node.loc.selector.begin_pos, where_node.loc.end.end_pos)
           if node.multiline? && !same_line?(node, where_node)
             range = range_by_whole_lines(range, include_final_newline: true)
-          else
+          elsif where_node.receiver
             corrector.remove(where_node.loc.dot)
+          else
+            corrector.remove(node.loc.dot)
           end
 
           corrector.remove(range)
         end
+        # rubocop:enable Metrics/AbcSize
 
         def same_line?(left_joins_node, where_node)
           left_joins_node.loc.selector.line == where_node.loc.selector.line

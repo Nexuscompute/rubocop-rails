@@ -45,15 +45,23 @@ module RuboCop
             return if with_dependencies?(task_method)
 
             add_offense(task_method) do |corrector|
-              task_name = task_method.arguments[0]
-              task_dependency = correct_task_dependency(task_name)
-
-              corrector.replace(task_name, task_dependency)
+              if with_arguments?(task_method)
+                new_task_dependency = correct_task_arguments_dependency(task_method)
+                corrector.replace(task_arguments(task_method), new_task_dependency)
+              else
+                task_name = task_method.first_argument
+                new_task_dependency = correct_task_dependency(task_name)
+                corrector.replace(task_name, new_task_dependency)
+              end
             end
           end
         end
 
         private
+
+        def correct_task_arguments_dependency(task_method)
+          "#{task_arguments(task_method).source} => :environment"
+        end
 
         def correct_task_dependency(task_name)
           if task_name.sym_type?
@@ -64,7 +72,7 @@ module RuboCop
         end
 
         def task_name(node)
-          first_arg = node.arguments[0]
+          first_arg = node.first_argument
           case first_arg&.type
           when :sym, :str
             first_arg.value.to_sym
@@ -80,8 +88,16 @@ module RuboCop
           end
         end
 
+        def task_arguments(node)
+          node.arguments[1]
+        end
+
+        def with_arguments?(node)
+          node.arguments.size > 1 && node.arguments[1].array_type?
+        end
+
         def with_dependencies?(node)
-          first_arg = node.arguments[0]
+          first_arg = node.first_argument
           return false unless first_arg
 
           if first_arg.hash_type?

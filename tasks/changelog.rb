@@ -1,10 +1,5 @@
 # frozen_string_literal: true
 
-if RUBY_VERSION < '2.6'
-  puts 'Changelog utilities available only for Ruby 2.6+'
-  exit(1)
-end
-
 # Changelog utility
 class Changelog
   ENTRIES_PATH = 'changelog/'
@@ -134,9 +129,9 @@ class Changelog
   end
 
   def new_contributor_lines
-    contributors
-      .map { |user| format(CONTRIBUTOR, user: user) }
-      .reject { |line| @rest.include?(line) }
+    unique_contributor_names = contributors.map { |user| format(CONTRIBUTOR, user: user) }.uniq
+
+    unique_contributor_names.reject { |line| @rest.include?(line) }
   end
 
   def contributors

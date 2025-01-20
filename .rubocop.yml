@@ -13,14 +13,10 @@ AllCops:
     - 'vendor/**/*'
     - 'spec/fixtures/**/*'
     - 'tmp/**/*'
-  TargetRubyVersion: 2.6
+  TargetRubyVersion: 2.7
   SuggestExtensions: false
 
 InternalAffairs/NodeMatcherDirective:
-  Enabled: false
-
-# FIXME: Workaround for a false positive caused by this cop when using `bundle exec rake`.
-InternalAffairs/UndefinedConfig:
   Enabled: false
 
 Naming/InclusiveLanguage:
@@ -141,10 +137,6 @@ RSpec:
       - expect_no_offenses
       - expect_offense
       - expect_offense_if_model_file
-
-# This disabling is a workaround for https://github.com/rubocop-hq/rubocop-rails/issues/374.
-RSpec/FactoryBot/CreateList:
-  Enabled: false
 
 RSpec/PredicateMatcher:
   EnforcedStyle: explicit

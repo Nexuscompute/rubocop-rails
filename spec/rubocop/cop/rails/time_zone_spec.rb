@@ -46,6 +46,17 @@ RSpec.describe RuboCop::Cop::Rails::TimeZone, :config do
       RUBY
     end
 
+    it 'registers an offense for Time.new with string argument' do
+      expect_offense(<<~RUBY)
+        Time.new("2012-06-10 10:12:00")
+             ^^^ Do not use `Time.new` without zone. Use `Time.zone.parse` instead.
+      RUBY
+
+      expect_correction(<<~RUBY)
+        Time.zone.parse("2012-06-10 10:12:00")
+      RUBY
+    end
+
     it 'does not register an offense when a .new method is called independently of the Time class' do
       expect_no_offenses(<<~RUBY)
         Range.new(1, Time.class.to_s)
@@ -122,6 +133,38 @@ RSpec.describe RuboCop::Cop::Rails::TimeZone, :config do
           RUBY
         end
       end
+    end
+
+    it 'registers an offense for `String#to_time`' do
+      expect_offense(<<~RUBY)
+        "2012-03-02 16:05:37".to_time
+                              ^^^^^^^ Do not use `String#to_time` without zone. Use `Time.zone.parse` instead.
+      RUBY
+
+      expect_correction(<<~RUBY)
+        Time.zone.parse("2012-03-02 16:05:37")
+      RUBY
+    end
+
+    it 'registers an offense for `to_time` with safe navigation' do
+      expect_offense(<<~RUBY)
+        "2012-03-02 16:05:37"&.to_time
+                               ^^^^^^^ Do not use `String#to_time` without zone. Use `Time.zone.parse` instead.
+      RUBY
+
+      expect_no_corrections
+    end
+
+    it 'does not register an offense for `to_time` when attaching timezone specifier `Z`' do
+      expect_no_offenses(<<~RUBY)
+        "2012-03-02T16:05:37Z".to_time
+      RUBY
+    end
+
+    it 'does not register an offense for `to_time` without receiver' do
+      expect_no_offenses(<<~RUBY)
+        to_time
+      RUBY
     end
 
     it 'registers an offense for Time.parse' do

@@ -271,6 +271,27 @@ RSpec.describe RuboCop::Cop::Rails::RedundantPresenceValidationOnBelongsTo, :con
       RUBY
     end
 
+    it 'does not register an offense with `if` option' do
+      expect_no_offenses(<<~RUBY)
+        belongs_to :user
+        validates :user, presence: true, if: -> { condition }
+      RUBY
+    end
+
+    it 'does not register an offense with `if` and other validation option' do
+      expect_no_offenses(<<~RUBY)
+        belongs_to :user
+        validates :user, presence: true, if: -> { condition }, numericality: true
+      RUBY
+    end
+
+    it 'does not register an offense with `unless` option' do
+      expect_no_offenses(<<~RUBY)
+        belongs_to :user
+        validates :user, presence: true, unless: -> { condition }
+      RUBY
+    end
+
     it 'does not register an offense with strict validation' do
       expect_no_offenses(<<~RUBY)
         belongs_to :user
@@ -282,6 +303,13 @@ RSpec.describe RuboCop::Cop::Rails::RedundantPresenceValidationOnBelongsTo, :con
       expect_no_offenses(<<~RUBY)
         belongs_to :user
         validates :user, presence: true, strict: MissingUserError
+      RUBY
+    end
+
+    it 'does not register an offense when other options are present but none are validations' do
+      expect_no_offenses(<<~RUBY)
+        belongs_to :user
+        validates :user, presence: true, allow_blank: false
       RUBY
     end
   end

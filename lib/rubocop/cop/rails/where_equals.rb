@@ -4,7 +4,8 @@ module RuboCop
   module Cop
     module Rails
       # Identifies places where manually constructed SQL
-      # in `where` can be replaced with `where(attribute: value)`.
+      # in `where` and `where.not` can be replaced with
+      # `where(attribute: value)` and `where.not(attribute: value)`.
       #
       # @safety
       #   This cop's autocorrection is unsafe because is may change SQL.
@@ -13,6 +14,7 @@ module RuboCop
       # @example
       #   # bad
       #   User.where('name = ?', 'Gabe')
+      #   User.where.not('name = ?', 'Gabe')
       #   User.where('name = :name', name: 'Gabe')
       #   User.where('name IS NULL')
       #   User.where('name IN (?)', ['john', 'jane'])
@@ -21,6 +23,7 @@ module RuboCop
       #
       #   # good
       #   User.where(name: 'Gabe')
+      #   User.where.not(name: 'Gabe')
       #   User.where(name: nil)
       #   User.where(name: ['john', 'jane'])
       #   User.where(users: { name: 'Gabe' })
@@ -29,25 +32,27 @@ module RuboCop
         extend AutoCorrector
 
         MSG = 'Use `%<good_method>s` instead of manually constructing SQL.'
-        RESTRICT_ON_SEND = %i[where].freeze
+        RESTRICT_ON_SEND = %i[where not].freeze
 
         def_node_matcher :where_method_call?, <<~PATTERN
           {
-            (send _ :where (array $str_type? $_ ?))
-            (send _ :where $str_type? $_ ?)
+            (call _ {:where :not} (array $str_type? $_ ?))
+            (call _ {:where :not} $str_type? $_ ?)
           }
         PATTERN
 
         def on_send(node)
+          return if node.method?(:not) && !where_not?(node)
+
           where_method_call?(node) do |template_node, value_node|
             value_node = value_node.first
 
             range = offense_range(node)
 
-            column_and_value = extract_column_and_value(template_node, value_node)
-            return unless column_and_value
+            column, value = extract_column_and_value(template_node, value_node)
+            return unless value
 
-            good_method = build_good_method(*column_and_value)
+            good_method = build_good_method(node.method_name, column, value)
             message = format(MSG, good_method: good_method)
 
             add_offense(range, message: message) do |corrector|
@@ -55,6 +60,7 @@ module RuboCop
             end
           end
         end
+        alias on_csend on_send
 
         EQ_ANONYMOUS_RE = /\A([\w.]+)\s+=\s+\?\z/.freeze             # column = ?
         IN_ANONYMOUS_RE = /\A([\w.]+)\s+IN\s+\(\?\)\z/i.freeze       # column IN (?)
@@ -68,11 +74,12 @@ module RuboCop
           range_between(node.loc.selector.begin_pos, node.source_range.end_pos)
         end
 
+        # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength
         def extract_column_and_value(template_node, value_node)
           value =
             case template_node.value
             when EQ_ANONYMOUS_RE, IN_ANONYMOUS_RE
-              value_node.source
+              value_node&.source
             when EQ_NAMED_RE, IN_NAMED_RE
               return unless value_node&.hash_type?
 
@@ -84,17 +91,27 @@ module RuboCop
               return
             end
 
-          [Regexp.last_match(1), value]
-        end
+          column_qualifier = Regexp.last_match(1)
+          return if column_qualifier.count('.') > 1
 
-        def build_good_method(column, value)
+          [column_qualifier, value]
+        end
+        # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/MethodLength
+
+        def build_good_method(method_name, column, value)
           if column.include?('.')
             table, column = column.split('.')
 
-            "where(#{table}: { #{column}: #{value} })"
+            "#{method_name}(#{table}: { #{column}: #{value} })"
           else
-            "where(#{column}: #{value})"
+            "#{method_name}(#{column}: #{value})"
           end
+        end
+
+        def where_not?(node)
+          return false unless (receiver = node.receiver)
+
+          receiver.send_type? && receiver.method?(:where)
         end
       end
     end

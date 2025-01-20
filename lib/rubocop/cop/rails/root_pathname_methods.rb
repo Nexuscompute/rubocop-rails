@@ -12,7 +12,7 @@ module RuboCop
       # `Style/FileRead`, `Style/FileWrite` and `Rails/RootJoinChain`.
       #
       # @safety
-      #   This cop is unsafe for autocorrection because `Dir`'s `children`, `each_child`, `entries`, and `glob`
+      #   This cop is unsafe for autocorrection because ``Dir``'s `children`, `each_child`, `entries`, and `glob`
       #   methods return string element, but these methods of `Pathname` return `Pathname` element.
       #
       # @example
@@ -23,6 +23,8 @@ module RuboCop
       #   File.binread(Rails.root.join('db', 'schema.rb'))
       #   File.write(Rails.root.join('db', 'schema.rb'), content)
       #   File.binwrite(Rails.root.join('db', 'schema.rb'), content)
+      #   Dir.glob(Rails.root.join('db', 'schema.rb'))
+      #   Dir[Rails.root.join('db', 'schema.rb')]
       #
       #   # good
       #   Rails.root.join('db', 'schema.rb').open
@@ -31,14 +33,30 @@ module RuboCop
       #   Rails.root.join('db', 'schema.rb').binread
       #   Rails.root.join('db', 'schema.rb').write(content)
       #   Rails.root.join('db', 'schema.rb').binwrite(content)
+      #   Rails.root.glob("db/schema.rb")
       #
-      class RootPathnameMethods < Base
+      class RootPathnameMethods < Base # rubocop:disable Metrics/ClassLength
         extend AutoCorrector
         include RangeHelp
 
-        MSG = '`%<rails_root>s` is a `Pathname` so you can just append `#%<method>s`.'
+        MSG = '`%<rails_root>s` is a `Pathname`, so you can use `%<replacement>s`.'
 
-        DIR_METHODS = %i[children delete each_child empty? entries exist? glob mkdir open rmdir unlink].to_set.freeze
+        DIR_GLOB_METHODS = %i[[] glob].to_set.freeze
+
+        DIR_NON_GLOB_METHODS = %i[
+          children
+          delete
+          each_child
+          empty?
+          entries
+          exist?
+          mkdir
+          open
+          rmdir
+          unlink
+        ].to_set.freeze
+
+        DIR_METHODS = (DIR_GLOB_METHODS + DIR_NON_GLOB_METHODS).freeze
 
         FILE_METHODS = %i[
           atime
@@ -134,7 +152,8 @@ module RuboCop
 
         RESTRICT_ON_SEND = (DIR_METHODS + FILE_METHODS + FILE_TEST_METHODS + FILE_UTILS_METHODS).to_set.freeze
 
-        def_node_matcher :pathname_method, <<~PATTERN
+        # @!method pathname_method_for_ruby_2_5_or_higher(node)
+        def_node_matcher :pathname_method_for_ruby_2_5_or_higher, <<~PATTERN
           {
             (send (const {nil? cbase} :Dir) $DIR_METHODS $_ $...)
             (send (const {nil? cbase} {:IO :File}) $FILE_METHODS $_ $...)
@@ -143,9 +162,19 @@ module RuboCop
           }
         PATTERN
 
+        # @!method pathname_method_for_ruby_2_4_or_lower(node)
+        def_node_matcher :pathname_method_for_ruby_2_4_or_lower, <<~PATTERN
+          {
+            (send (const {nil? cbase} :Dir) $DIR_NON_GLOB_METHODS $_ $...)
+            (send (const {nil? cbase} {:IO :File}) $FILE_METHODS $_ $...)
+            (send (const {nil? cbase} :FileTest) $FILE_TEST_METHODS $_ $...)
+            (send (const {nil? cbase} :FileUtils) $FILE_UTILS_METHODS $_ $...)
+          }
+        PATTERN
+
         def_node_matcher :dir_glob?, <<~PATTERN
           (send
-            (const {cbase nil?} :Dir) :glob ...)
+            (const {cbase nil?} :Dir) DIR_GLOB_METHODS ...)
         PATTERN
 
         def_node_matcher :rails_root_pathname?, <<~PATTERN
@@ -162,13 +191,14 @@ module RuboCop
 
         def on_send(node)
           evidence(node) do |method, path, args, rails_root|
-            add_offense(node, message: format(MSG, method: method, rails_root: rails_root.source)) do |corrector|
-              replacement = if dir_glob?(node)
-                              build_path_glob_replacement(path, method)
-                            else
-                              build_path_replacement(path, method, args)
-                            end
+            replacement = if dir_glob?(node)
+                            build_path_glob_replacement(path)
+                          else
+                            build_path_replacement(path, method, args)
+                          end
 
+            message = format(MSG, rails_root: rails_root.source, replacement: replacement)
+            add_offense(node, message: message) do |corrector|
               corrector.replace(node, replacement)
             end
           end
@@ -183,12 +213,20 @@ module RuboCop
           yield(method, path, args, rails_root)
         end
 
-        def build_path_glob_replacement(path, method)
+        def pathname_method(node)
+          if target_ruby_version >= 2.5
+            pathname_method_for_ruby_2_5_or_higher(node)
+          else
+            pathname_method_for_ruby_2_4_or_lower(node)
+          end
+        end
+
+        def build_path_glob_replacement(path)
           receiver = range_between(path.source_range.begin_pos, path.children.first.loc.selector.end_pos).source
 
           argument = path.arguments.one? ? path.first_argument.source : join_arguments(path.arguments)
 
-          "#{receiver}.#{method}(#{argument})"
+          "#{receiver}.glob(#{argument})"
         end
 
         def build_path_replacement(path, method, args)
@@ -199,7 +237,12 @@ module RuboCop
           end
 
           replacement = "#{path_replacement}.#{method}"
-          replacement += "(#{args.map(&:source).join(', ')})" unless args.empty?
+
+          if args.any?
+            formatted_args = args.map { |arg| arg.array_type? ? "*#{arg.source}" : arg.source }
+            replacement += "(#{formatted_args.join(', ')})"
+          end
+
           replacement
         end
 

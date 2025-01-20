@@ -25,6 +25,25 @@ RSpec.describe RuboCop::Cop::Rails::BulkChangeTable, :config do
     end
   end
 
+  shared_examples 'wrong arguments' do
+    it 'does not register an offense for `change_table` with no block' do
+      expect_no_offenses(<<~RUBY)
+        def up
+          change_table(:users)
+        end
+      RUBY
+    end
+
+    it 'does not register an offense for `change_table` with empty block' do
+      expect_no_offenses(<<~RUBY)
+        def up
+          change_table(:users) do
+          end
+        end
+      RUBY
+    end
+  end
+
   shared_examples 'no offense' do
     it 'does not register an offense when including combinable transformations' do
       expect_no_offenses(<<~RUBY)
@@ -45,6 +64,8 @@ RSpec.describe RuboCop::Cop::Rails::BulkChangeTable, :config do
         end
       RUBY
     end
+
+    it_behaves_like 'wrong arguments'
   end
 
   shared_examples 'offense for mysql' do
@@ -91,6 +112,8 @@ RSpec.describe RuboCop::Cop::Rails::BulkChangeTable, :config do
         end
       RUBY
     end
+
+    it_behaves_like 'wrong arguments'
   end
 
   shared_examples 'offense for postgresql' do
@@ -153,6 +176,8 @@ RSpec.describe RuboCop::Cop::Rails::BulkChangeTable, :config do
         end
       RUBY
     end
+
+    it_behaves_like 'wrong arguments'
   end
 
   it_behaves_like 'no offense'
@@ -345,7 +370,7 @@ RSpec.describe RuboCop::Cop::Rails::BulkChangeTable, :config do
       RUBY
     end
 
-    it 'register an offense when using string as table name' do
+    it 'registers an offense when using string as table name' do
       expect_offense(<<~RUBY)
         def change
           remove_index "users", :name
@@ -355,7 +380,7 @@ RSpec.describe RuboCop::Cop::Rails::BulkChangeTable, :config do
       RUBY
     end
 
-    it 'register an offense when using mixed style table name' do
+    it 'registers an offense when using mixed style table name' do
       expect_offense(<<~RUBY)
         def change
           remove_index "users", :name
@@ -416,6 +441,26 @@ RSpec.describe RuboCop::Cop::Rails::BulkChangeTable, :config do
         end
       RUBY
     end
+
+    it 'does not register an offense for multiple `change_column_null`' do
+      expect_no_offenses(<<~RUBY)
+        def change
+          change_column_null :users, :name, false
+          change_column_null :users, :address, false
+        end
+      RUBY
+    end
+
+    it 'does not register an offense for multiple `t.change_null`' do
+      expect_no_offenses(<<~RUBY)
+        def change
+          change_table :users do |t|
+            t.change_null :name, false
+            t.change_null :address, false
+          end
+        end
+      RUBY
+    end
   end
 
   context 'when database is PostgreSQL' do
@@ -430,12 +475,67 @@ RSpec.describe RuboCop::Cop::Rails::BulkChangeTable, :config do
       it_behaves_like 'offense'
       it_behaves_like 'no offense for mysql'
       it_behaves_like 'offense for postgresql'
+
+      it 'does not register an offense for multiple `change_column_null`' do
+        expect_no_offenses(<<~RUBY)
+          def change
+            change_column_null :users, :name, false
+            change_column_null :users, :address, false
+          end
+        RUBY
+      end
+
+      it 'does not register an offense for multiple `t.change_null`' do
+        expect_no_offenses(<<~RUBY)
+          def change
+            change_table :users do |t|
+              t.change_null :name, false
+              t.change_null :address, false
+            end
+          end
+        RUBY
+      end
     end
 
     context 'with Rails 5.1', :rails51 do
       it_behaves_like 'no offense'
       it_behaves_like 'no offense for mysql'
       it_behaves_like 'no offense for postgresql'
+    end
+
+    context 'with Rails 6.1', :rails61 do
+      it 'registers an offense for multiple `change_column_null`' do
+        expect_offense(<<~RUBY)
+          def change
+            change_column_null :users, :name, false
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ You can use `change_table :users, bulk: true` to combine alter queries.
+            change_column_null :users, :address, false
+          end
+        RUBY
+      end
+
+      it 'registers an offense for multiple `t.change_null`' do
+        expect_offense(<<~RUBY)
+          def change
+            change_table :users do |t|
+            ^^^^^^^^^^^^^^^^^^^ You can combine alter queries using `bulk: true` options.
+              t.change_null :name, false
+              t.change_null :address, false
+            end
+          end
+        RUBY
+      end
+
+      it 'does not register an offense for multiple `t.change_null` with `bulk: true`' do
+        expect_no_offenses(<<~RUBY)
+          def change
+            change_table :users, bulk: true do |t|
+              t.change_null :name, false
+              t.change_null :address, false
+            end
+          end
+        RUBY
+      end
     end
   end
 
@@ -452,25 +552,171 @@ RSpec.describe RuboCop::Cop::Rails::BulkChangeTable, :config do
     end
 
     context 'mysql2' do
-      let(:yaml) do
-        {
-          'development' => {
-            'adapter' => 'mysql2'
+      context 'with top-level adapter configuration' do
+        let(:yaml) do
+          {
+            'development' => {
+              'adapter' => 'mysql2'
+            }
           }
-        }
+        end
+
+        it_behaves_like 'offense for mysql'
       end
+
+      context 'with nested adapter configuration' do
+        let(:yaml) do
+          {
+            'development' => {
+              'primary' => {
+                'adapter' => 'mysql2'
+              }
+            }
+          }
+        end
+
+        it_behaves_like 'offense for mysql'
+      end
+    end
+
+    context 'trilogy' do
+      context 'with top-level adapter configuration' do
+        let(:yaml) do
+          {
+            'development' => {
+              'adapter' => 'trilogy'
+            }
+          }
+        end
+
+        it_behaves_like 'offense for mysql'
+      end
+
+      context 'with nested adapter configuration' do
+        let(:yaml) do
+          {
+            'development' => {
+              'primary' => {
+                'adapter' => 'trilogy'
+              }
+            }
+          }
+        end
+
+        it_behaves_like 'offense for mysql'
+      end
+    end
+
+    context 'postgresql' do
+      context 'with top-level adapter configuration' do
+        let(:yaml) do
+          {
+            'development' => {
+              'adapter' => 'postgresql'
+            }
+          }
+        end
+
+        context 'with Rails 5.2', :rails52 do
+          it_behaves_like 'offense for postgresql'
+        end
+
+        context 'with Rails 5.1', :rails51 do
+          it_behaves_like 'no offense for postgresql'
+        end
+      end
+
+      context 'with nested adapter configuration' do
+        let(:yaml) do
+          {
+            'development' => {
+              'primary' => {
+                'adapter' => 'postgresql'
+              }
+            }
+          }
+        end
+
+        context 'with Rails 5.2', :rails52 do
+          it_behaves_like 'offense for postgresql'
+        end
+
+        context 'with Rails 5.1', :rails51 do
+          it_behaves_like 'no offense for postgresql'
+        end
+      end
+    end
+
+    context 'postgis' do
+      context 'with top-level adapter configuration' do
+        let(:yaml) do
+          {
+            'development' => {
+              'adapter' => 'postgis'
+            }
+          }
+        end
+
+        context 'with Rails 5.2', :rails52 do
+          it_behaves_like 'offense for postgresql'
+        end
+
+        context 'with Rails 5.1', :rails51 do
+          it_behaves_like 'no offense for postgresql'
+        end
+      end
+
+      context 'with nested adapter configuration' do
+        let(:yaml) do
+          {
+            'development' => {
+              'primary' => {
+                'adapter' => 'postgis'
+              }
+            }
+          }
+        end
+
+        context 'with Rails 5.2', :rails52 do
+          it_behaves_like 'offense for postgresql'
+        end
+
+        context 'with Rails 5.1', :rails51 do
+          it_behaves_like 'no offense for postgresql'
+        end
+      end
+    end
+
+    context 'invalid (e.g. ERB)' do
+      before do
+        allow(YAML).to receive(:load_file).with('config/database.yml') do
+          YAML.parse('pool: <%= Rails.env.production? ? 10 : 5 %>')
+        end
+      end
+
+      it_behaves_like 'no offense'
+    end
+  end
+
+  context 'when `DATABASE_URL` is set' do
+    before do
+      stub_const('ENV', 'DATABASE_URL' => database_url)
+    end
+
+    context 'mysql2' do
+      let(:database_url) { 'mysql2://localhost/my_database' }
 
       it_behaves_like 'offense for mysql'
     end
 
-    context 'postgresql' do
-      let(:yaml) do
-        {
-          'development' => {
-            'adapter' => 'postgresql'
-          }
-        }
-      end
+    context 'trilogy' do
+      let(:database_url) { 'trilogy://localhost/my_database' }
+
+      it_behaves_like 'offense for mysql'
+    end
+
+    context 'postgres' do
+      let(:database_url) { 'postgres://localhost/my_database' }
 
       context 'with Rails 5.2', :rails52 do
         it_behaves_like 'offense for postgresql'
@@ -481,12 +727,20 @@ RSpec.describe RuboCop::Cop::Rails::BulkChangeTable, :config do
       end
     end
 
-    context 'invalid (e.g. ERB)' do
-      before do
-        allow(YAML).to receive(:load_file).with('config/database.yml') do
-          YAML.parse('pool: <%= Rails.env.production? ? 10 : 5 %>')
-        end
+    context 'postgresql' do
+      let(:database_url) { 'postgresql://localhost/my_database' }
+
+      context 'with Rails 5.2', :rails52 do
+        it_behaves_like 'offense for postgresql'
       end
+
+      context 'with Rails 5.1', :rails51 do
+        it_behaves_like 'no offense for postgresql'
+      end
+    end
+
+    context 'unsupported (e.g. sqlserver)' do
+      let(:database_url) { 'sqlserver://localhost/my_database' }
 
       it_behaves_like 'no offense'
     end

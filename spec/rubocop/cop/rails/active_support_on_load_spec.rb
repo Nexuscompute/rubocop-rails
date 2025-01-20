@@ -12,6 +12,12 @@ RSpec.describe(RuboCop::Cop::Rails::ActiveSupportOnLoad, :config) do
     RUBY
   end
 
+  it 'does not add offense for include without arguments' do
+    expect_no_offenses(<<~RUBY)
+      ActiveRecord::Base.include
+    RUBY
+  end
+
   it 'adds offense and corrects when trying to extend a framework class with prepend' do
     expect_offense(<<~RUBY)
       ActiveRecord::Base.prepend(MyClass)
@@ -92,5 +98,48 @@ RSpec.describe(RuboCop::Cop::Rails::ActiveSupportOnLoad, :config) do
     expect_no_offenses(<<~RUBY)
       MyClass1.prepend(MyClass)
     RUBY
+  end
+
+  context 'Rails 5.2', :rails52 do
+    it 'registers an offense for a Rails 5.2 load hook' do
+      expect_offense(<<~RUBY)
+        ActiveRecord::ConnectionAdapters::SQLite3Adapter.include(MyClass)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Use `ActiveSupport.on_load(:active_record_sqlite3adapter) { include MyClass }` [...]
+      RUBY
+
+      expect_correction(<<~RUBY)
+        ActiveSupport.on_load(:active_record_sqlite3adapter) { include MyClass }
+      RUBY
+    end
+
+    it 'registers no offense for a Rails 7.1 load hook' do
+      expect_no_offenses(<<~RUBY)
+        ActiveRecord::TestFixtures.include(MyClass)
+      RUBY
+    end
+  end
+
+  context 'Rails 7.1', :rails71 do
+    it 'registers an offense for a Rails 5.2 load hook' do
+      expect_offense(<<~RUBY)
+        ActiveRecord::ConnectionAdapters::SQLite3Adapter.include(MyClass)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Use `ActiveSupport.on_load(:active_record_sqlite3adapter) { include MyClass }` [...]
+      RUBY
+
+      expect_correction(<<~RUBY)
+        ActiveSupport.on_load(:active_record_sqlite3adapter) { include MyClass }
+      RUBY
+    end
+
+    it 'registers an offense for a Rails 7.1 load hook' do
+      expect_offense(<<~RUBY)
+        ActiveRecord::TestFixtures.include(MyClass)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Use `ActiveSupport.on_load(:active_record_fixtures) { include MyClass }` [...]
+      RUBY
+
+      expect_correction(<<~RUBY)
+        ActiveSupport.on_load(:active_record_fixtures) { include MyClass }
+      RUBY
+    end
   end
 end

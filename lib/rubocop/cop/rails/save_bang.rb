@@ -188,7 +188,7 @@ module RuboCop
         end
 
         def persisted_referenced?(assignment)
-          return unless assignment.referenced?
+          return false unless assignment.referenced?
 
           assignment.variable.references.any? do |reference|
             call_to_persisted?(reference.node.parent)
@@ -196,6 +196,8 @@ module RuboCop
         end
 
         def call_to_persisted?(node)
+          node = node.parent.condition if node.parenthesized_call? && node.parent.if_type?
+
           node.send_type? && node.method?(:persisted?)
         end
 
@@ -235,18 +237,23 @@ module RuboCop
 
         def in_condition_or_compound_boolean?(node)
           node = node.block_node || node
-          parent = node.parent
+          parent = node.each_ancestor.find { |ancestor| !ancestor.begin_type? }
           return false unless parent
 
-          operator_or_single_negative?(parent) || (conditional?(parent) && node == parent.condition)
+          operator_or_single_negative?(parent) || (conditional?(parent) && node == deparenthesize(parent.condition))
         end
 
         def operator_or_single_negative?(node)
-          node.or_type? || node.and_type? || single_negative?(node)
+          node.operator_keyword? || single_negative?(node)
         end
 
         def conditional?(parent)
           parent.if_type? || parent.case_type?
+        end
+
+        def deparenthesize(node)
+          node = node.children.last while node.begin_type?
+          node
         end
 
         def checked_immediately?(node)
@@ -298,7 +305,7 @@ module RuboCop
 
           node = assignable_node(node)
           method, sibling_index = find_method_with_sibling_index(node.parent)
-          return unless method && (method.def_type? || method.block_type?)
+          return false unless method && (method.def_type? || method.block_type?)
 
           method.children.size == node.sibling_index + sibling_index
         end
@@ -321,8 +328,9 @@ module RuboCop
         end
 
         def return_value_assigned?(node)
-          assignment = assignable_node(node).parent
-          assignment&.lvasgn_type?
+          return false unless (assignment = assignable_node(node).parent)
+
+          assignment.assignment?
         end
 
         def persist_method?(node, methods = RESTRICT_ON_SEND)
@@ -331,10 +339,10 @@ module RuboCop
 
         # Check argument signature as no arguments or one hash
         def expected_signature?(node)
-          !node.arguments? ||
-            (node.arguments.one? &&
-              node.method_name != :destroy &&
-              (node.first_argument.hash_type? || !node.first_argument.literal?))
+          return true unless node.arguments?
+          return false if !node.arguments.one? || node.method?(:destroy)
+
+          node.first_argument.hash_type? || !node.first_argument.literal?
         end
       end
     end

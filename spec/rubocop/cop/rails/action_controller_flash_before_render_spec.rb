@@ -312,4 +312,87 @@ RSpec.describe RuboCop::Cop::Rails::ActionControllerFlashBeforeRender, :config d
       RUBY
     end
   end
+
+  context 'when using `flash` after `render` and returning `redirect_to` in condition block' do
+    it 'does not register an offense' do
+      expect_no_offenses(<<~RUBY)
+        class HomeController < ApplicationController
+          def create
+            if condition
+              flash[:alert] = "msg"
+              return redirect_to "https://www.example.com/"
+            end
+            render :index
+          end
+        end
+      RUBY
+    end
+  end
+
+  context 'when using `flash` after `render` and `redirect_to` is used in implicit return branch ' \
+          'and render is is used in the other branch' do
+    it 'does not register an offense' do
+      expect_no_offenses(<<~RUBY)
+        class HomeController < ApplicationController
+          def create
+            if foo.update(params)
+              flash[:success] = 'msg'
+
+              if redirect_to_index?
+                redirect_to index
+              else
+                redirect_to path(foo)
+              end
+            else
+              flash.now[:alert] = 'msg'
+              render :edit, status: :unprocessable_entity
+            end
+          end
+        end
+      RUBY
+    end
+  end
+
+  context 'when using `flash` after `render` and `render` is part of a different preceding branch' \
+          'that implicitly returns' do
+    it 'does not register an offense' do
+      expect_no_offenses(<<~RUBY)
+        class HomeController < ApplicationController
+          def create
+            if remote_request? || sandbox?
+              if current_user.nil?
+                render :index
+              else
+                head :forbidden
+              end
+            elsif current_user.nil?
+              redirect_to sign_in_path
+            else
+              flash[:alert] = 'msg'
+              if request.referer.present?
+                redirect_to(request.referer)
+              else
+                redirect_to(root_path)
+              end
+            end
+          end
+        end
+      RUBY
+    end
+  end
+
+  context 'when using `flash` in `rescue` and `redirect_to` in `ensure`' do
+    it 'does not register an offense' do
+      expect_no_offenses(<<~RUBY)
+        class HomeController < ApplicationController
+          def create
+          rescue
+            flash[:alert] = 'msg'
+          ensure
+            redirect_to :index
+          end
+        end
+      RUBY
+    end
+  end
 end

@@ -431,5 +431,49 @@ RSpec.describe RuboCop::Cop::Rails::HttpPositionalArguments, :config do
         end
       RUBY
     end
+
+    it 'does not register an offese for arguments forwaring' do
+      expect_no_offenses(<<~RUBY)
+        def perform_request(...)
+          get(:list, ...)
+        end
+      RUBY
+    end
+
+    it 'does not register an offese for keyword arguments forwaring' do
+      expect_no_offenses(<<~RUBY)
+        def perform_request(**options)
+          get(:list, **options)
+        end
+      RUBY
+    end
+
+    it 'does not register an offese for anonymous keyword arguments forwaring', :ruby32 do
+      expect_no_offenses(<<~RUBY)
+        def perform_request(**)
+          get(:list, **)
+        end
+      RUBY
+    end
+
+    context 'when using `include Rack::Test::Methods`' do
+      it 'does not register an offense for get method' do
+        expect_no_offenses(<<~RUBY)
+          include Rack::Test::Methods
+
+          get :create, user_id: @user.id
+        RUBY
+      end
+    end
+
+    context 'when using `include ::Rack::Test::Methods`' do
+      it 'does not register an offense for get method' do
+        expect_no_offenses(<<~RUBY)
+          include ::Rack::Test::Methods
+
+          get :create, user_id: @user.id
+        RUBY
+      end
+    end
   end
 end

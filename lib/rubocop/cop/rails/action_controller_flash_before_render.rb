@@ -85,7 +85,7 @@ module RuboCop
 
         def inherit_action_controller_base?(node)
           class_node = find_ancestor(node, type: :class)
-          return unless class_node
+          return false unless class_node
 
           action_controller?(class_node)
         end
@@ -99,6 +99,8 @@ module RuboCop
 
         def use_redirect_to?(context)
           context.right_siblings.compact.any? do |sibling|
+            # Unwrap `return redirect_to :index`
+            sibling = sibling.children.first if sibling.return_type? && sibling.children.one?
             sibling.send_type? && sibling.method?(:redirect_to)
           end
         end
